@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>牙體復形 3D 數位比對系統 (體積量化版)</title>
+    <title>牙體復形 3D 數位比對系統 (終極量化修復版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
@@ -19,7 +19,7 @@
             width: 320px; background-color: #1e1e1e; padding: 20px;
             display: flex; flex-direction: column;
             box-shadow: 4px 0 15px rgba(0,0,0,0.6); z-index: 10; box-sizing: border-box;
-            overflow-y: auto; /* 💡 防止加上報告後內容太多超出螢幕 */
+            overflow-y: auto;
         }
         #canvas-container { flex: 1; position: relative; width: calc(100% - 320px); height: 100%; }
         h2 { margin-top: 0; color: #ffffff; font-size: 1.2rem; border-bottom: 2px solid #333; padding-bottom: 10px; }
@@ -43,10 +43,9 @@
         .layer-checkbox:last-child { margin-bottom: 0; }
         .layer-checkbox input { margin-right: 10px; cursor: pointer; }
 
-        /* 💡 新增：體積量化報告面板的 UI 樣式 */
         #volume-results {
             background-color: #1a2936; padding: 15px; border-radius: 6px;
-            margin-bottom: 15px; border: 1px solid #2b475e; display: none; /* 初始隱藏 */
+            margin-bottom: 15px; border: 1px solid #2b475e; display: none;
             font-size: 0.85rem; animation: fadeIn 0.5s;
         }
         .vol-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
@@ -72,7 +71,7 @@
         .spinner { border: 4px solid rgba(255,255,255,0.1); width: 60px; height: 60px; border-radius: 50%; border-left-color: #007acc; animation: spin 1s linear infinite; }
         #progress-text { font-size: 2rem; font-weight: bold; color: #007acc; margin-top: 15px; font-variant-numeric: tabular-nums; }
         #loading-subtext { margin-top: 5px; color: #aaa; font-size: 0.9rem; text-align: center; max-width: 80%; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes spin { 0 { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -142,9 +141,6 @@
     </div>
 
     <script>
-        // =========================================================================
-        // 🚀 核心優化：將背景演算法重構為「面片三角微元積分法」，同步產出顏色與體積數據
-        // =========================================================================
         const workerCode = `
             self.onmessage = function(e) {
                 const { pos1, pos2, tol, cellSize } = e.data;
@@ -154,7 +150,6 @@
 
                 const grid1 = {}, grid2 = {};
 
-                // 建立空間雜湊索引
                 for (let i = 0; i < pos1.length; i += 3) {
                     const key = Math.floor(pos1[i]/cellSize) + ',' + Math.floor(pos1[i+1]/cellSize) + ',' + Math.floor(pos1[i+2]/cellSize);
                     if (!grid1[key]) grid1[key] = [];
@@ -171,7 +166,7 @@
                 const totalWork = totalVerts1 + totalVerts2;
                 let lastReportedPercent = -1;
 
-                // 1. 利用高斯散度定理計算 Gold Standard 的真實精準總體積
+                // 散度定理總體積計算
                 let totalVolume1 = 0;
                 for (let i = 0; i < pos1.length; i += 9) {
                     const ax = pos1[i], ay = pos1[i+1], az = pos1[i+2];
@@ -180,9 +175,8 @@
                     const vSign = (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6.0;
                     totalVolume1 += vSign;
                 }
-                totalVolume1 = Math.abs(totalVolume1); // 取絕對值，防範三角形法線反向
+                totalVolume1 = Math.abs(totalVolume1);
 
-                // 最近距離查詢輔助函數
                 function getMinDist(x, y, z, grid, pos) {
                     const gx = Math.floor(x / cellSize), gy = Math.floor(y / cellSize), gz = Math.floor(z / cellSize);
                     let minDist = Infinity;
@@ -203,7 +197,7 @@
                     return minDist;
                 }
 
-                // 2. 逐面片（i+=9）計算 STL1 (Gold Standard) 的修磨不足體積
+                // 2. 計算 STL1 (Gold Standard) 的修磨不足體積
                 let cIdx1 = 0;
                 let underPrepVolume = 0;
                 for (let i = 0; i < pos1.length; i += 9) {
@@ -211,39 +205,41 @@
                     const bx = pos1[i+3], by = pos1[i+4], bz = pos1[i+5];
                     const cx = pos1[i+6], cy = pos1[i+7], cz = pos1[i+8];
 
-                    // 外積計算三角面片面積
                     const abx = bx - ax, aby = by - ay, abz = bz - az;
                     const acx = cx - ax, acy = cy - ay, acz = cz - az;
                     const cX = aby * acz - abz * acy, cY = abz * acx - abx * acz, cZ = abx * acy - aby * acx;
                     const faceArea = 0.5 * Math.sqrt(cX*cX + cY*cY + cZ*cZ);
-                    const vertexArea = faceArea / 3.0; // 分配給三個頂點的微元面積
+                    const vertexArea = faceArea / 3.0;
 
-                    // 處理頂點 1
+                    // 頂點 A
                     let dA = getMinDist(ax, ay, az, grid2, pos2);
                     if (dA <= tol) {
                         colors1[cIdx1] = 0.7; colors1[cIdx1+1] = 0.7; colors1[cIdx1+2] = 0.7; colors1[cIdx1+3] = 0.2;
                     } else {
                         colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 0.5;
-                        underPrepVolume += vertexArea * dA; // 面積 x 厚度 = 微元體積積分
+                        if (dA === Infinity) dA = 2.0; // 💡 終極修復防線：若超出搜尋鄰域，視為嚴重製備落差(2.0mm)，防止 Infinity 污染！
+                        underPrepVolume += vertexArea * dA;
                     }
                     cIdx1 += 4;
 
-                    // 處理頂點 2
+                    // 頂點 B
                     let dB = getMinDist(bx, by, bz, grid2, pos2);
                     if (dB <= tol) {
                         colors1[cIdx1] = 0.7; colors1[cIdx1+1] = 0.7; colors1[cIdx1+2] = 0.7; colors1[cIdx1+3] = 0.2;
                     } else {
                         colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 0.5;
+                        if (dB === Infinity) dB = 2.0; // 💡 終極修復防線
                         underPrepVolume += vertexArea * dB;
                     }
                     cIdx1 += 4;
 
-                    // 處理頂點 3
+                    // 頂點 C
                     let dC = getMinDist(cx, cy, cz, grid2, pos2);
                     if (dC <= tol) {
                         colors1[cIdx1] = 0.7; colors1[cIdx1+1] = 0.7; colors1[cIdx1+2] = 0.7; colors1[cIdx1+3] = 0.2;
                     } else {
                         colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 0.5;
+                        if (dC === Infinity) dC = 2.0; // 💡 終極修復防線
                         underPrepVolume += vertexArea * dC;
                     }
                     cIdx1 += 4;
@@ -257,7 +253,7 @@
                     }
                 }
 
-                // 3. 逐面片（i+=9）計算 STL2 (待比對模型) 的過度修磨體積
+                // 3. 計算 STL2 (待比對模型) 的過度修磨體積
                 let cIdx2 = 0;
                 let overPrepVolume = 0;
                 for (let i = 0; i < pos2.length; i += 9) {
@@ -271,32 +267,35 @@
                     const faceArea = 0.5 * Math.sqrt(cX*cX + cY*cY + cZ*cZ);
                     const vertexArea = faceArea / 3.0;
 
-                    // 處理頂點 1
+                    // 頂點 A
                     let dA = getMinDist(ax, ay, az, grid1, pos1);
                     if (dA <= tol) {
                         colors2[cIdx2] = 0.0; colors2[cIdx2+1] = 0.0; colors2[cIdx2+2] = 0.0; colors2[cIdx2+3] = 0.0;
                     } else {
                         colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 0.5;
+                        if (dA === Infinity) dA = 2.0; // 💡 終極修復防線
                         overPrepVolume += vertexArea * dA;
                     }
                     cIdx2 += 4;
 
-                    // 處理頂點 2
+                    // 頂點 B
                     let dB = getMinDist(bx, by, bz, grid1, pos1);
                     if (dB <= tol) {
                         colors2[cIdx2] = 0.0; colors2[cIdx2+1] = 0.0; colors2[cIdx2+2] = 0.0; colors2[cIdx2+3] = 0.0;
                     } else {
                         colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 0.5;
+                        if (dB === Infinity) dB = 2.0; // 💡 終極修復防線
                         overPrepVolume += vertexArea * dB;
                     }
                     cIdx2 += 4;
 
-                    // 處理頂點 3
+                    // 頂點 C
                     let dC = getMinDist(cx, cy, cz, grid1, pos1);
                     if (dC <= tol) {
                         colors2[cIdx2] = 0.0; colors2[cIdx2+1] = 0.0; colors2[cIdx2+2] = 0.0; colors2[cIdx2+3] = 0.0;
                     } else {
                         colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 0.5;
+                        if (dC === Infinity) dC = 2.0; // 💡 終極修復防線
                         overPrepVolume += vertexArea * dC;
                     }
                     cIdx2 += 4;
@@ -310,7 +309,6 @@
                     }
                 }
 
-                // 將算出的三組體積數據一同包裝打包回傳
                 self.postMessage({ 
                     type: 'done', colors1, colors2, totalVolume1, underPrepVolume, overPrepVolume 
                 }, [colors1.buffer, colors2.buffer]);
@@ -321,7 +319,7 @@
         const geometryWorker = new Worker(URL.createObjectURL(blob));
 
         // ==========================================
-        // 初始化 WebGL 3D 畫布環境
+        // 初始化 Three.js 環境
         // ==========================================
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
@@ -379,7 +377,6 @@
             loadingOverlay.style.display = 'flex';
             progressText.innerText = "0%";
             loadingSubtext.innerText = "正在解讀 3D STL 檔案編碼...";
-            // 隱藏上一次的報告面版
             document.getElementById('volume-results').style.display = 'none';
             
             setTimeout(() => {
@@ -411,9 +408,6 @@
             }, 30);
         });
 
-        // ==========================================
-        // 📡 接收數據與渲染報告
-        // ==========================================
         geometryWorker.onmessage = function(e) {
             const data = e.data;
             if (data.type === 'progress') {
@@ -422,7 +416,7 @@
             } 
             else if (data.type === 'done') {
                 progressText.innerText = "100%";
-                loadingSubtext.innerText = "比對完成！正在渲染量化報告報告...";
+                loadingSubtext.innerText = "比對完成！正在渲染量化報告...";
                 
                 setTimeout(() => {
                     if(mesh1) scene.remove(mesh1);
@@ -450,9 +444,9 @@
                     camera.position.set(center.x, center.y, center.z + geometry1.boundingSphere.radius * 2);
                     controls.update();
 
-                    // 💡 主執行緒更新：計算百分比並渲染量化報告報告面版
-                    const pctUnder = ((data.underPrepVolume / data.totalVolume1) * 100).toFixed(2);
-                    const pctOver = ((data.overPrepVolume / data.totalVolume1) * 100).toFixed(2);
+                    // 💡 加入零體積防護防線 (data.totalVolume1 > 0)，防止極端情況下的零除錯誤
+                    const pctUnder = data.totalVolume1 > 0 ? ((data.underPrepVolume / data.totalVolume1) * 100).toFixed(2) : "0.00";
+                    const pctOver = data.totalVolume1 > 0 ? ((data.overPrepVolume / data.totalVolume1) * 100).toFixed(2) : "0.00";
 
                     document.getElementById('vol-total').innerText = data.totalVolume1.toFixed(1) + " mm³";
                     document.getElementById('vol-under').innerText = data.underPrepVolume.toFixed(2) + " mm³";
@@ -460,11 +454,10 @@
                     document.getElementById('vol-over').innerText = data.overPrepVolume.toFixed(2) + " mm³";
                     document.getElementById('pct-over').innerText = pctOver + "%";
                     
-                    // 展現報告面板
                     document.getElementById('volume-results').style.display = 'block';
 
                     loadingOverlay.style.display = 'none';
-                    statusDiv.innerText = "🎉 比對完成！體積量化分析已出爐。";
+                    statusDiv.innerText = "🎉 比對完成！體積量化分析已順利修復出爐。";
                 }, 30);
             }
         };
