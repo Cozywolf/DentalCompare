@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>牙體復形 3D 比對系統 (通用相容版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    
+    <style>
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background-color: #121212; color: #e0e0e0;
+            display: flex; height: 100vh; overflow: hidden;
+        }
+        #sidebar {
+            width: 320px; background-color: #1e1e1e; padding: 20px;
+            display: flex; flex-direction: column;
+            box-shadow: 4px 0 15px rgba(0,0,0,0.6); z-index: 10; box-sizing: border-box;
+        }
+        #canvas-container { flex: 1; position: relative; width: calc(100% - 320px); height: 100%; }
+        h2 { margin-top: 0; color: #ffffff; font-size: 1.2rem; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .file-input-container { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #aaa; }
+        input[type="file"] {
+            width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #444;
+            color: #fff; border-radius: 4px; box-sizing: border-box; font-size: 0.85rem;
+        }
+        .slider-container { margin-bottom: 20px; }
+        input[type="range"] { width: 100%; margin-top: 5px; }
+        button {
+            background-color: #007acc; color: white; border: none; padding: 12px;
+            border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1rem;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #005999; }
+        button:disabled { background-color: #444; color: #777; cursor: not-allowed; }
+        #legend { margin-top: 20px; background: #252525; padding: 15px; border-radius: 6px; font-size: 0.85rem; border: 1px solid #333; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .color-box { width: 16px; height: 16px; border-radius: 3px; margin-right: 10px; box-sizing: border-box; }
+        #status { margin-top: auto; padding: 10px; background: #252525; border-radius: 4px; font-size: 0.85rem; color: #00ff66; text-align: center; }
+        #loading-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 100; display: none;
+        }
+        .spinner { border: 4px solid rgba(255,255,255,0.1); width: 42px; height: 42px; border-radius: 50%; border-left-color: #007acc; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>🦷 牙體復形 3D 智慧比對</h2>
+        
+        <div class="file-input-container">
+            <label>1. Gold Standard (STL1)</label>
+            <input type="file" id="stl1" accept=".stl">
+        </div>
+        
+        <div class="file-input-container">
+            <label>2. 學生製備模型 (STL2)</label>
+            <input type="file" id="stl2" accept=".stl">
+        </div>
+        
+        <div class="slider-container">
+            <label>距離容差 Tolerance: <span id="tol-val">0.05</span> mm</label>
+            <input type="range" id="tolerance" min="0.01" max="0.30" step="0.01" value="0.05">
+        </div>
+        
+        <button id="compare-btn" disabled>開始自動比對</button>
+        
+        <div id="legend">
+            <div style="font-weight: bold; margin-bottom: 10px; color: #fff;">視覺圖例說明：</div>
+            <div class="legend-item">
+                <div class="color-box" style="background-color: rgba(180,180,180,0.3); border: 1px dashed #fff;"></div>
+                <span>半透明灰色：結構符合標準</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background-color: #ff0000;"></div>
+                <span>紅色（不透明）：修磨不足 (Under-prep)</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box" style="background-color: #0000ff;"></div>
+                <span>藍色（不透明）：過度修磨 (Over-prep)</span>
+            </div>
+        </div>
+        
+        <div id="status">系統就緒，請上傳檔案</div>
+    </div>
+
+    <div id="canvas-container">
+        <div id="loading-overlay">
+            <div class="spinner"></div>
+            <p style="margin-top: 15px; color: #fff;" id="loading-text">正在進行高精度比對運算...</p>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 核心演算法內容 (供多執行緒與單執行緒共用)
+        // ==========================================
+        const algorithmLogic = `
+            function coreCompare(pos1, pos2, tol, cellSize) {
+                const colors1 = new Float32Array((pos1.length / 3) * 4);
+                const colors2 = new Float32Array((pos2.length / 3) * 4);
+                const grid2 = {}, grid1 = {};
+
+                for (let i = 0; i < pos2.length; i += 3) {
+                    const gx = Math.floor(pos2[i] / cellSize), gy = Math.floor(pos2[i+1] / cellSize), gz = Math.floor(pos2[i+2] / cellSize);
+                    const key = gx + ',' + gy + ',' + gz;
+                    if (!grid2[key]) grid2[key] = [];
+                    grid2[key].push(i);
+                }
+                for (let i = 0; i < pos1.length; i += 3) {
+                    const gx = Math.floor(pos1[i] / cellSize), gy = Math.floor(pos1[i+1] / cellSize), gz = Math.floor(pos1[i+2] / cellSize);
+                    const key = gx + ',' + gy + ',' + gz;
+                    if (!grid1[key]) grid1[key] = [];
+                    grid1[key].push(i);
+                }
+
+                let cIdx1 = 0;
+                for (let i = 0; i < pos1.length; i += 3) {
+                    const x = pos1[i], y = pos1[i+1], z = pos1[i+2];
+                    const gx = Math.floor(x / cellSize), gy = Math.floor(y / cellSize), gz = Math.floor(z / cellSize);
+                    let minDist = Infinity;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dz = -1; dz <= 1; dz++) {
+                                const indices = grid2[(gx+dx) + ',' + (gy+dy) + ',' + (gz+dz)];
+                                if (indices) {
+                                    for (let j = 0; j < indices.length; j++) {
+                                        const idx = indices[j];
+                                        const d = Math.sqrt((x-pos2[idx])**2 + (y-pos2[idx+1])**2 + (z-pos2[idx+2])**2);
+                                        if (d < minDist) minDist = d;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (minDist <= tol) {
+                        colors1[cIdx1] = 0.7; colors1[cIdx1+1] = 0.7; colors1[cIdx1+2] = 0.7; colors1[cIdx1+3] = 0.2;
+                    } else {
+                        colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 1.0;
+                    }
+                    cIdx1 += 4;
+                }
+
+                let cIdx2 = 0;
+                for (let i = 0; i < pos2.length; i += 3) {
+                    const x = pos2[i], y = pos2[i+1], z = pos2[i+2];
+                    const gx = Math.floor(x / cellSize), gy = Math.floor(y / cellSize), gz = Math.floor(z / cellSize);
+                    let minDist = Infinity;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dz = -1; dz <= 1; dz++) {
+                                const indices = grid1[(gx+dx) + ',' + (gy+dy) + ',' + (gz+dz)];
+                                if (indices) {
+                                    for (let j = 0; j < indices.length; j++) {
+                                        const idx = indices[j];
+                                        const d = Math.sqrt((x-pos1[idx])**2 + (y-pos1[idx+1])**2 + (z-pos1[idx+2])**2);
+                                        if (d < minDist) minDist = d;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (minDist <= tol) {
+                        colors2[cIdx2] = 0.0; colors2[cIdx2+1] = 0.0; colors2[cIdx2+2] = 0.0; colors2[cIdx2+3] = 0.0;
+                    } else {
+                        colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 1.0;
+                    }
+                    cIdx2 += 4;
+                }
+                return { colors1, colors2 };
+            }
+        `;
+
+        // ==========================================
+        // 安全防護網：嘗試初始化 Web Worker，失敗則啟動相容防線
+        // ==========================================
+        let geometryWorker = null;
+        let useWorker = false;
+
+        try {
+            const workerCode = algorithmLogic + `
+                self.onmessage = function(e) {
+                    const { pos1, pos2, tol, cellSize } = e.data;
+                    const result = coreCompare(pos1, pos2, tol, cellSize);
+                    self.postMessage(result, [result.colors1.buffer, result.colors2.buffer]);
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            geometryWorker = new Worker(URL.createObjectURL(blob));
+            useWorker = true;
+            console.log("🚀 系統成功啟動：Web Worker 多執行緒模式");
+        } catch (e) {
+            useWorker = false;
+            console.warn("⚠️ 瀏覽器安全原則攔截了 Worker (通常是因為直接雙擊打開 HTML)。已自動切換為本機高效相容模式。");
+            // 動態在主執行緒注入演算法邏輯
+            const scriptInject = document.createElement('script');
+            scriptInject.text = algorithmLogic;
+            document.body.appendChild(scriptInject);
+        }
+
+        // ==========================================
+        // 初始化 Three.js 環境 (不受任何安全限制影響)
+        // ==========================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x121212);
+
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(0, 0, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        scene.add(new THREE.AmbientLight(0x555555));
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight1.position.set(1, 1, 1).normalize();
+        scene.add(dirLight1);
+        const dirLight2 = new THREE.DirectionalLight(0x999999, 0.5);
+        dirLight2.position.set(-1, -1, 1).normalize();
+        scene.add(dirLight2);
+
+        let geometry1, geometry2, mesh1, mesh2;
+        const loader = new THREE.STLLoader();
+
+        const file1Input = document.getElementById('stl1');
+        const file2Input = document.getElementById('stl2');
+        const compareBtn = document.getElementById('compare-btn');
+        const toleranceInput = document.getElementById('tolerance');
+        const tolValDisplay = document.getElementById('tol-val');
+        const statusDiv = document.getElementById('status');
+        const loadingOverlay = document.getElementById('loading-overlay');
+
+        toleranceInput.addEventListener('input', (e) => { tolValDisplay.innerText = e.target.value; });
+
+        // 正確啟動事件監聽（確保按鈕能解鎖解鎖）
+        function checkInputs() {
+            compareBtn.disabled = !(file1Input.files.length && file2Input.files.length);
+            if(!compareBtn.disabled) {
+                statusDiv.innerText = useWorker ? "🟢 檔案已就緒 (多執行緒加速模式)" : "🟡 檔案已就緒 (本地安全相容模式)";
+            }
+        }
+        file1Input.addEventListener('change', checkInputs);
+        file2Input.addEventListener('change', checkInputs);
+
+        // ==========================================
+        // 📥 點擊比對的執行分配分配
+        // ==========================================
+        compareBtn.addEventListener('click', () => {
+            loadingOverlay.style.display = 'flex';
+            statusDiv.innerText = "正在讀取 3D 網格模型...";
+            
+            const reader1 = new FileReader();
+            reader1.onload = function (e1) {
+                geometry1 = loader.parse(e1.target.result);
+                
+                const reader2 = new FileReader();
+                reader2.onload = function (e2) {
+                    geometry2 = loader.parse(e2.target.result);
+                    
+                    // 執行重心對齊
+                    alignCenterOfMass(geometry1, geometry2);
+
+                    const pos1Array = geometry1.attributes.position.array;
+                    const pos2Array = geometry2.attributes.position.array;
+                    const tol = parseFloat(toleranceInput.value);
+
+                    if (useWorker) {
+                        // 【路徑 A】丟給背景算，主畫面不卡死
+                        const p1Copy = pos1Array.slice();
+                        const p2Copy = pos2Array.slice();
+                        geometryWorker.postMessage({ pos1: p1Copy, pos2: p2Copy, tol: tol, cellSize: 1.0 }, [p1Copy.buffer, p2Copy.buffer]);
+                    } else {
+                        // 【路徑 B】本地直接運算，利用 setTimeout 讓 Loading 動畫能閃一下
+                        statusDiv.innerText = "正在進行本地高效率運算...";
+                        setTimeout(() => {
+                            const result = coreCompare(pos1Array, pos2Array, tol, 1.0);
+                            renderComparisonResults(result.colors1, result.colors2);
+                        }, 50);
+                    }
+                };
+                reader2.readAsArrayBuffer(file2Input.files[0]);
+            };
+            reader1.readAsArrayBuffer(file1Input.files[0]);
+        });
+
+        // 監聽 Worker 回傳 (僅路徑 A 會觸發)
+        if (useWorker) {
+            geometryWorker.onmessage = function(e) {
+                renderComparisonResults(e.data.colors1, e.data.colors2);
+            };
+        }
+
+        // ==========================================
+        // 3D 渲染與聚焦輸出
+        // ==========================================
+        function renderComparisonResults(colors1, colors2) {
+            if(mesh1) scene.remove(mesh1);
+            if(mesh2) scene.remove(mesh2);
+
+            geometry1.setAttribute('color', new THREE.BufferAttribute(colors1, 4));
+            geometry2.setAttribute('color', new THREE.BufferAttribute(colors2, 4));
+
+            const material = new THREE.MeshStandardMaterial({
+                vertexColors: true, roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide, transparent: true, depthWrite: true,
+            });
+
+            mesh1 = new THREE.Mesh(geometry1, material);
+            mesh2 = new THREE.Mesh(geometry2, material);
+            scene.add(mesh1);
+            scene.add(mesh2);
+
+            geometry1.computeBoundingSphere();
+            const center = geometry1.boundingSphere.center;
+            controls.target.copy(center);
+            camera.position.set(center.x, center.y, center.z + geometry1.boundingSphere.radius * 2);
+            controls.update();
+
+            loadingOverlay.style.display = 'none';
+            statusDiv.innerText = "🎉 比對成功！請在畫布上拖曳檢視。";
+        }
+
+        function alignCenterOfMass(geo1, geo2) {
+            geo1.computeBoundingBox(); geo2.computeBoundingBox();
+            const center1 = new THREE.Vector3(), center2 = new THREE.Vector3();
+            geo1.boundingBox.getCenter(center1); geo2.boundingBox.getCenter(center2);
+
+            const pos1 = geo1.attributes.position.array;
+            for (let i = 0; i < pos1.length; i += 3) {
+                pos1[i] -= center1.x; pos1[i+1] -= center1.y; pos1[i+2] -= center1.z;
+            }
+            const pos2 = geo2.attributes.position.array;
+            for (let i = 0; i < pos2.length; i += 3) {
+                pos2[i] -= center2.x; pos2[i+1] -= center2.y; pos2[i+2] -= center2.z;
+            }
+            geo1.attributes.position.needsUpdate = true; geo2.attributes.position.needsUpdate = true;
+            geo1.computeVertexNormals(); geo2.computeVertexNormals();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        animate();
+    </script>
+</body>
+</html>
