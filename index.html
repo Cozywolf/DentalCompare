@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>牙體復形 3D 數位比對系統 (GitHub 線上版)</title>
+    <title>牙體復形 3D 數位比對系統 (全透視雲端版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
@@ -64,7 +64,7 @@
         </div>
         
         <div class="file-input-container">
-            <label>2. 學生製備模型 (STL2)</label>
+            <label>2. 待比對模型 (STL2)</label>
             <input type="file" id="stl2" accept=".stl">
         </div>
         
@@ -78,16 +78,16 @@
         <div id="legend">
             <div style="font-weight: bold; margin-bottom: 10px; color: #fff;">透視圖例說明：</div>
             <div class="legend-item">
-                <div class="color-box" style="background-color: rgba(180,180,180,0.3); border: 1px dashed #fff;"></div>
+                <div class="color-box" style="background-color: rgba(180,180,180,0.2); border: 1px dashed #666;"></div>
                 <span>半透明灰色：結構符合標準</span>
             </div>
             <div class="legend-item">
-                <div class="color-box" style="background-color: #ff0000;"></div>
-                <span>紅色（不透明）：修磨不足 (Under-prep)</span>
+                <div class="color-box" style="background-color: rgba(255,0,0,0.5); border: 1px solid #ff0000;"></div>
+                <span>半透明紅色：修磨不足 (Under-prep)</span>
             </div>
             <div class="legend-item">
-                <div class="color-box" style="background-color: #0000ff;"></div>
-                <span>藍色（不透明）：過度修磨 (Over-prep)</span>
+                <div class="color-box" style="background-color: rgba(26,76,255,0.5); border: 1px solid #1a4cff;"></div>
+                <span>半透明藍色：過度修磨 (Over-prep)</span>
             </div>
         </div>
         
@@ -104,7 +104,7 @@
 
     <script>
         // ===================================================
-        // 🚀 核心設計：在背景多執行緒中執行高精度計算，並隨時發送進度電報
+        // 🚀 核心設計：多執行緒背景運算，並輸出全新 4通道半透明色矩陣
         // ===================================================
         const workerCode = `
             self.onmessage = function(e) {
@@ -157,13 +157,14 @@
                     }
 
                     if (minDist <= tol) {
+                        // 共同區域：維持 20% 極淡半透明灰色殼
                         colors1[cIdx1] = 0.7; colors1[cIdx1+1] = 0.7; colors1[cIdx1+2] = 0.7; colors1[cIdx1+3] = 0.2;
                     } else {
-                        colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 1.0;
+                        // 🛠️ 改良點：將獨有紅色修改為 50% 半透明 (Alpha = 0.5)
+                        colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 0.5;
                     }
                     cIdx1 += 4;
 
-                    // 每跑完一小段，計算百分比並發送給前台
                     if ((i / 3) % 2000 === 0) {
                         const currentProgress = i / 3;
                         const percent = Math.round((currentProgress / totalWork) * 100);
@@ -174,7 +175,7 @@
                     }
                 }
 
-                // 階段 2：接力比對學生模型 (STL2)
+                // 階段 2：接力比對 待比對模型 (STL2)
                 let cIdx2 = 0;
                 for (let i = 0; i < pos2.length; i += 3) {
                     const x = pos2[i], y = pos2[i+1], z = pos2[i+2];
@@ -199,7 +200,8 @@
                     if (minDist <= tol) {
                         colors2[cIdx2] = 0.0; colors2[cIdx2+1] = 0.0; colors2[cIdx2+2] = 0.0; colors2[cIdx2+3] = 0.0;
                     } else {
-                        colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 1.0;
+                        // 🛠️ 改良點：將獨有藍色修改為 50% 半透明 (Alpha = 0.5)
+                        colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 0.5;
                     }
                     cIdx2 += 4;
 
@@ -207,18 +209,16 @@
                         const currentProgress = totalVerts1 + (i / 3);
                         const percent = Math.round((currentProgress / totalWork) * 100);
                         if (percent !== lastReportedPercent) {
-                            self.postMessage({ type: 'progress', percent: percent, msg: '正在計算學生過度修磨區域...' });
+                            self.postMessage({ type: 'progress', percent: percent, msg: '正在計算待比對模型獨有區域...' });
                             lastReportedPercent = percent;
                         }
                     }
                 }
 
-                // 全數計算完畢，回傳最終成果
                 self.postMessage({ type: 'done', colors1, colors2 }, [colors1.buffer, colors2.buffer]);
             };
         `;
 
-        // 在 HTTPS 的 GitHub 環境下，這一行將會完美合法執行，絕不卡死
         const blob = new Blob([workerCode], { type: 'application/javascript' });
         const geometryWorker = new Worker(URL.createObjectURL(blob));
 
@@ -266,18 +266,15 @@
 
         function checkInputs() {
             compareBtn.disabled = !(file1Input.files.length && file2Input.files.length);
-            if(!compareBtn.disabled) statusDiv.innerText = "🟢 雲端安全網格已就緒，可執行多執行緒加速";
+            if(!compareBtn.disabled) statusDiv.innerText = "🟢 網格數據就緒，可執行多執行緒半透視比對";
         }
         file1Input.addEventListener('change', checkInputs);
         file2Input.addEventListener('change', checkInputs);
 
-        // ==========================================
-        // 📥 前台發送數據給背景背景
-        // ==========================================
         compareBtn.addEventListener('click', () => {
             loadingOverlay.style.display = 'flex';
             progressText.innerText = "0%";
-            loadingSubtext.innerText = "正在解讀 3D STL 檔案二進位編碼...";
+            loadingSubtext.innerText = "正在解讀 3D STL 檔案編碼...";
             
             setTimeout(() => {
                 const reader1 = new FileReader();
@@ -288,25 +285,22 @@
                     reader2.onload = function (e2) {
                         geometry2 = loader.parse(e2.target.result);
                         
-                        loadingSubtext.innerText = "正在進行 3D 空間坐標系重心對齊...";
+                        loadingSubtext.innerText = "正在進行 3D 空間座標系重心對齊...";
                         
                         setTimeout(() => {
-                            // 自動重心平移對齊
                             alignCenterOfMass(geometry1, geometry2);
 
                             const pos1Array = geometry1.attributes.position.array;
                             const pos2Array = geometry2.attributes.position.array;
                             
-                            // 高效複製二進位緩衝區，準備傳遞
                             const p1Copy = pos1Array.slice();
                             const p2Copy = pos2Array.slice();
 
-                            // 將繁重矩陣打包，一鍵踢給背景 Worker 執行緒
                             geometryWorker.postMessage({
                                 pos1: p1Copy,
                                 pos2: p2Copy,
                                 tol: parseFloat(toleranceInput.value),
-                                cellSize: 0.5 // 0.5mm 高解析度齒科雜湊步長
+                                cellSize: 0.5
                             }, [p1Copy.buffer, p2Copy.buffer]);
                         }, 30);
                     };
@@ -317,20 +311,18 @@
         });
 
         // ==========================================
-        // 📡 監聽電報：即時動態更新前台進度條
+        // 📡 監聽背景電報與 3D 最終透視渲染
         // ==========================================
         geometryWorker.onmessage = function(e) {
             const data = e.data;
             
             if (data.type === 'progress') {
-                // 收到進度電報：前台即時跳動百分比，UI動畫保持 60fps 極致流暢
                 progressText.innerText = data.percent + "%";
-                loadingSubtext.innerText = `${data.msg} (背景多核心運算中)`;
+                loadingSubtext.innerText = `${data.msg} (背景核心高速運作中)`;
             } 
             else if (data.type === 'done') {
-                // 收到完工通知：接收著色矩陣並渲染 3D 圖像
                 progressText.innerText = "100%";
-                loadingSubtext.innerText = "幾何比對完成！正在著色 3D 網格...";
+                loadingSubtext.innerText = "比對完成！正在生成 3D 透視組織面...";
                 
                 setTimeout(() => {
                     if(mesh1) scene.remove(mesh1);
@@ -339,8 +331,14 @@
                     geometry1.setAttribute('color', new THREE.BufferAttribute(data.colors1, 4));
                     geometry2.setAttribute('color', new THREE.BufferAttribute(data.colors2, 4));
 
+                    // 💡 工藝細節：開啟頂點透明度，並在 3D 引擎底層優化半透明遮擋排序
                     const material = new THREE.MeshStandardMaterial({
-                        vertexColors: true, roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide, transparent: true, depthWrite: true,
+                        vertexColors: true,
+                        roughness: 0.3,
+                        metalness: 0.1,
+                        side: THREE.DoubleSide,
+                        transparent: true,     // 啟動半透明著色模式
+                        depthWrite: true,      // 保留深度防護線，讓旋轉時邊界依然保持立體外形
                     });
 
                     mesh1 = new THREE.Mesh(geometry1, material);
@@ -348,7 +346,6 @@
                     scene.add(mesh1);
                     scene.add(mesh2);
 
-                    // 視角自動追蹤聚焦
                     geometry1.computeBoundingSphere();
                     const center = geometry1.boundingSphere.center;
                     controls.target.copy(center);
@@ -356,7 +353,7 @@
                     controls.update();
 
                     loadingOverlay.style.display = 'none';
-                    statusDiv.innerText = "🎉 比對成功！誤差已透視視覺化。";
+                    statusDiv.innerText = "🎉 比對成功！紅藍雙色已全面優化為半透明透視。";
                 }, 30);
             }
         };
