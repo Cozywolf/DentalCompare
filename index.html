@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>牙體復形 3D 數位比對系統 (全透視雲端版)</title>
+    <title>牙體復形 3D 數位比對系統 (圖層可控雲端版)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
@@ -30,6 +30,19 @@
         }
         .slider-container { margin-bottom: 20px; }
         input[type="range"] { width: 100%; margin-top: 5px; }
+        
+        /* 💡 新增：圖層控制區的 CSS 樣式美化 */
+        .layer-control-container {
+            background-color: #252525; padding: 12px; border-radius: 6px;
+            margin-bottom: 15px; border: 1px solid #333;
+        }
+        .layer-checkbox {
+            display: flex; align-items: center; margin-bottom: 8px;
+            cursor: pointer; font-size: 0.9rem; color: #ddd;
+        }
+        .layer-checkbox:last-child { margin-bottom: 0; }
+        .layer-checkbox input { margin-right: 10px; cursor: pointer; }
+
         button {
             background-color: #007acc; color: white; border: none; padding: 12px;
             border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1rem;
@@ -42,7 +55,6 @@
         .color-box { width: 16px; height: 16px; border-radius: 3px; margin-right: 10px; box-sizing: border-box; }
         #status { margin-top: auto; padding: 10px; background: #252525; border-radius: 4px; font-size: 0.85rem; color: #00ff66; text-align: center; }
         
-        /* 鋪滿畫面的高性能 Loading 遮罩 */
         #loading-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 100; display: none;
@@ -71,6 +83,16 @@
         <div class="slider-container">
             <label>距離容差 Tolerance: <span id="tol-val">0.05</span> mm</label>
             <input type="range" id="tolerance" min="0.01" max="0.30" step="0.01" value="0.05">
+        </div>
+
+        <div class="layer-control-container">
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 0.85rem; color: #888;">3D 圖層顯示控制：</div>
+            <label class="layer-checkbox">
+                <input type="checkbox" id="toggle-stl1" checked> 顯示 Gold Standard (紅色區)
+            </label>
+            <label class="layer-checkbox">
+                <input type="checkbox" id="toggle-stl2" checked> 顯示 待比對模型 (藍色區)
+            </label>
         </div>
         
         <button id="compare-btn" disabled>開始多執行緒安全比對</button>
@@ -103,20 +125,16 @@
     </div>
 
     <script>
-        // ===================================================
-        // 🚀 核心設計：多執行緒背景運算，並輸出全新 4通道半透明色矩陣
-        // ===================================================
+        // ==========================================
+        // 多執行緒背景計算核心程式碼 (保持不變)
+        // ==========================================
         const workerCode = `
             self.onmessage = function(e) {
                 const { pos1, pos2, tol, cellSize } = e.data;
-                
                 const colors1 = new Float32Array((pos1.length / 3) * 4);
                 const colors2 = new Float32Array((pos2.length / 3) * 4);
+                const grid1 = {}, grid2 = {};
 
-                const grid1 = {};
-                const grid2 = {};
-
-                // 建立空間網格雜湊
                 for (let i = 0; i < pos1.length; i += 3) {
                     const key = Math.floor(pos1[i]/cellSize) + ',' + Math.floor(pos1[i+1]/cellSize) + ',' + Math.floor(pos1[i+2]/cellSize);
                     if (!grid1[key]) grid1[key] = [];
@@ -131,16 +149,13 @@
                 const totalVerts1 = pos1.length / 3;
                 const totalVerts2 = pos2.length / 3;
                 const totalWork = totalVerts1 + totalVerts2;
-                
                 let lastReportedPercent = -1;
 
-                // 階段 1：比對 Gold Standard (STL1)
                 let cIdx1 = 0;
                 for (let i = 0; i < pos1.length; i += 3) {
                     const x = pos1[i], y = pos1[i+1], z = pos1[i+2];
                     const gx = Math.floor(x / cellSize), gy = Math.floor(y / cellSize), gz = Math.floor(z / cellSize);
                     let minDist = Infinity;
-
                     for (let dx = -1; dx <= 1; dx++) {
                         for (let dy = -1; dy <= 1; dy++) {
                             for (let dz = -1; dz <= 1; dz++) {
@@ -155,19 +170,14 @@
                             }
                         }
                     }
-
                     if (minDist <= tol) {
-                        // 共同區域：維持 20% 極淡半透明灰色殼
                         colors1[cIdx1] = 0.7; colors1[cIdx1+1] = 0.7; colors1[cIdx1+2] = 0.7; colors1[cIdx1+3] = 0.2;
                     } else {
-                        // 🛠️ 改良點：將獨有紅色修改為 50% 半透明 (Alpha = 0.5)
                         colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 0.5;
                     }
                     cIdx1 += 4;
-
                     if ((i / 3) % 2000 === 0) {
-                        const currentProgress = i / 3;
-                        const percent = Math.round((currentProgress / totalWork) * 100);
+                        const percent = Math.round(((i / 3) / totalWork) * 100);
                         if (percent !== lastReportedPercent) {
                             self.postMessage({ type: 'progress', percent: percent, msg: '正在探測 Gold Standard 窩洞邊界...' });
                             lastReportedPercent = percent;
@@ -175,13 +185,11 @@
                     }
                 }
 
-                // 階段 2：接力比對 待比對模型 (STL2)
                 let cIdx2 = 0;
                 for (let i = 0; i < pos2.length; i += 3) {
                     const x = pos2[i], y = pos2[i+1], z = pos2[i+2];
                     const gx = Math.floor(x / cellSize), gy = Math.floor(y / cellSize), gz = Math.floor(z / cellSize);
                     let minDist = Infinity;
-
                     for (let dx = -1; dx <= 1; dx++) {
                         for (let dy = -1; dy <= 1; dy++) {
                             for (let dz = -1; dz <= 1; dz++) {
@@ -196,25 +204,20 @@
                             }
                         }
                     }
-
                     if (minDist <= tol) {
                         colors2[cIdx2] = 0.0; colors2[cIdx2+1] = 0.0; colors2[cIdx2+2] = 0.0; colors2[cIdx2+3] = 0.0;
                     } else {
-                        // 🛠️ 改良點：將獨有藍色修改為 50% 半透明 (Alpha = 0.5)
                         colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 0.5;
                     }
                     cIdx2 += 4;
-
                     if ((i / 3) % 2000 === 0) {
-                        const currentProgress = totalVerts1 + (i / 3);
-                        const percent = Math.round((currentProgress / totalWork) * 100);
+                        const percent = Math.round(((totalVerts1 + (i / 3)) / totalWork) * 100);
                         if (percent !== lastReportedPercent) {
                             self.postMessage({ type: 'progress', percent: percent, msg: '正在計算待比對模型獨有區域...' });
                             lastReportedPercent = percent;
                         }
                     }
                 }
-
                 self.postMessage({ type: 'done', colors1, colors2 }, [colors1.buffer, colors2.buffer]);
             };
         `;
@@ -223,7 +226,7 @@
         const geometryWorker = new Worker(URL.createObjectURL(blob));
 
         // ==========================================
-        // 初始化 WebGL 3D 畫布環境
+        // 初始化 WebGL 3D 舞台
         // ==========================================
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
@@ -262,6 +265,10 @@
         const progressText = document.getElementById('progress-text');
         const loadingSubtext = document.getElementById('loading-subtext');
 
+        // 💡 抓取網頁圖層勾選方塊元件
+        const toggleStl1Check = document.getElementById('toggle-stl1');
+        const toggleStl2Check = document.getElementById('toggle-stl2');
+
         toleranceInput.addEventListener('input', (e) => { tolValDisplay.innerText = e.target.value; });
 
         function checkInputs() {
@@ -271,6 +278,17 @@
         file1Input.addEventListener('change', checkInputs);
         file2Input.addEventListener('change', checkInputs);
 
+        // 💡 邏輯實作：綁定勾選方塊事件。當老師切換開關時，即時控制 3D 圖層隱藏或顯現
+        toggleStl1Check.addEventListener('change', () => {
+            if (mesh1) mesh1.visible = toggleStl1Check.checked;
+        });
+        toggleStl2Check.addEventListener('change', () => {
+            if (mesh2) mesh2.visible = toggleStl2Check.checked;
+        });
+
+        // ==========================================
+        // 📥 發送運算數據
+        // ==========================================
         compareBtn.addEventListener('click', () => {
             loadingOverlay.style.display = 'flex';
             progressText.innerText = "0%";
@@ -280,11 +298,9 @@
                 const reader1 = new FileReader();
                 reader1.onload = function (e1) {
                     geometry1 = loader.parse(e1.target.result);
-                    
                     const reader2 = new FileReader();
                     reader2.onload = function (e2) {
                         geometry2 = loader.parse(e2.target.result);
-                        
                         loadingSubtext.innerText = "正在進行 3D 空間座標系重心對齊...";
                         
                         setTimeout(() => {
@@ -292,15 +308,12 @@
 
                             const pos1Array = geometry1.attributes.position.array;
                             const pos2Array = geometry2.attributes.position.array;
-                            
                             const p1Copy = pos1Array.slice();
                             const p2Copy = pos2Array.slice();
 
                             geometryWorker.postMessage({
-                                pos1: p1Copy,
-                                pos2: p2Copy,
-                                tol: parseFloat(toleranceInput.value),
-                                cellSize: 0.5
+                                pos1: p1Copy, pos2: p2Copy,
+                                tol: parseFloat(toleranceInput.value), cellSize: 0.5
                             }, [p1Copy.buffer, p2Copy.buffer]);
                         }, 30);
                     };
@@ -311,11 +324,10 @@
         });
 
         // ==========================================
-        // 📡 監聽背景電報與 3D 最終透視渲染
+        // 📡 接收結果並套用圖層隱藏設定
         // ==========================================
         geometryWorker.onmessage = function(e) {
             const data = e.data;
-            
             if (data.type === 'progress') {
                 progressText.innerText = data.percent + "%";
                 loadingSubtext.innerText = `${data.msg} (背景核心高速運作中)`;
@@ -331,18 +343,17 @@
                     geometry1.setAttribute('color', new THREE.BufferAttribute(data.colors1, 4));
                     geometry2.setAttribute('color', new THREE.BufferAttribute(data.colors2, 4));
 
-                    // 💡 工藝細節：開啟頂點透明度，並在 3D 引擎底層優化半透明遮擋排序
                     const material = new THREE.MeshStandardMaterial({
-                        vertexColors: true,
-                        roughness: 0.3,
-                        metalness: 0.1,
-                        side: THREE.DoubleSide,
-                        transparent: true,     // 啟動半透明著色模式
-                        depthWrite: true,      // 保留深度防護線，讓旋轉時邊界依然保持立體外形
+                        vertexColors: true, roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide, transparent: true, depthWrite: true,
                     });
 
                     mesh1 = new THREE.Mesh(geometry1, material);
                     mesh2 = new THREE.Mesh(geometry2, material);
+
+                    // 💡 技術關鍵：當新模型渲染出來時，必須立即同步目前勾選方塊的狀態，防止被隱藏的模型再次跳出來
+                    mesh1.visible = toggleStl1Check.checked;
+                    mesh2.visible = toggleStl2Check.checked;
+
                     scene.add(mesh1);
                     scene.add(mesh2);
 
@@ -353,7 +364,7 @@
                     controls.update();
 
                     loadingOverlay.style.display = 'none';
-                    statusDiv.innerText = "🎉 比對成功！紅藍雙色已全面優化為半透明透視。";
+                    statusDiv.innerText = "🎉 比對成功！已支援圖層智慧獨立隱藏。";
                 }, 30);
             }
         };
@@ -362,7 +373,6 @@
             geo1.computeBoundingBox(); geo2.computeBoundingBox();
             const center1 = new THREE.Vector3(), center2 = new THREE.Vector3();
             geo1.boundingBox.getCenter(center1); geo2.boundingBox.getCenter(center2);
-
             const pos1 = geo1.attributes.position.array;
             for (let i = 0; i < pos1.length; i += 3) {
                 pos1[i] -= center1.x; pos1[i+1] -= center1.y; pos1[i+2] -= center1.z;
