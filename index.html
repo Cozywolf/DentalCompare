@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>牙體復形 3D 比對系統 (通用相容版)</title>
+    <title>牙體復形 3D 數位比對系統 (終極量化修復版 + 外觀調整)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
@@ -19,6 +19,7 @@
             width: 320px; background-color: #1e1e1e; padding: 20px;
             display: flex; flex-direction: column;
             box-shadow: 4px 0 15px rgba(0,0,0,0.6); z-index: 10; box-sizing: border-box;
+            overflow-y: auto;
         }
         #canvas-container { flex: 1; position: relative; width: calc(100% - 320px); height: 100%; }
         h2 { margin-top: 0; color: #ffffff; font-size: 1.2rem; border-bottom: 2px solid #333; padding-bottom: 10px; }
@@ -28,31 +29,94 @@
             width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #444;
             color: #fff; border-radius: 4px; box-sizing: border-box; font-size: 0.85rem;
         }
-        .slider-container { margin-bottom: 20px; }
+        .slider-container { margin-bottom: 15px; }
         input[type="range"] { width: 100%; margin-top: 5px; }
+        
+        .layer-control-container {
+            background-color: #252525; padding: 12px; border-radius: 6px;
+            margin-bottom: 15px; border: 1px solid #333;
+        }
+        .layer-checkbox {
+            display: flex; align-items: center; margin-bottom: 8px;
+            cursor: pointer; font-size: 0.9rem; color: #ddd;
+        }
+        .layer-checkbox:last-child { margin-bottom: 0; }
+        .layer-checkbox input { margin-right: 10px; cursor: pointer; }
+
+        #volume-results {
+            background-color: #1a2936; padding: 15px; border-radius: 6px;
+            margin-bottom: 15px; border: 1px solid #2b475e; display: none;
+            font-size: 0.85rem; animation: fadeIn 0.5s;
+        }
+        .vol-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .vol-row:last-child { margin-bottom: 0; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* ===== 外觀控制面板 ===== */
+        #appearance-panel {
+            background-color: #252525; border: 1px solid #333;
+            border-radius: 6px; margin-bottom: 15px;
+        }
+        #appearance-panel > summary {
+            padding: 12px; cursor: pointer; font-weight: bold;
+            font-size: 0.85rem; color: #888; list-style: none;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #appearance-panel > summary::-webkit-details-marker { display: none; }
+        #appearance-panel > summary::after { content: '\25BE'; color: #666; }
+        #appearance-panel[open] > summary::after { content: '\25B4'; }
+        .model-appearance { padding: 0 12px 12px; }
+        .model-appearance + .model-appearance { border-top: 1px solid #333; padding-top: 12px; }
+        .model-appearance-title {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 0.85rem; font-weight: bold; color: #ddd; margin-bottom: 10px;
+        }
+        .swatch-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; border: 1px solid #555; }
+        .appearance-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px; font-size: 0.8rem; color: #aaa; margin-bottom: 6px;
+        }
+        .appearance-row .value { color: #fff; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+        .appearance-slider { margin-bottom: 10px; }
+        .appearance-slider:last-child { margin-bottom: 0; }
+        .appearance-slider input[type="range"] { margin-top: 0; }
+        input[type="color"] {
+            width: 40px; height: 24px; padding: 2px; cursor: pointer;
+            background: #2a2a2a; border: 1px solid #444; border-radius: 4px;
+        }
+        #reset-appearance {
+            display: block; width: calc(100% - 24px); margin: 0 12px 12px;
+            background-color: #333; font-size: 0.8rem; font-weight: normal; padding: 8px;
+        }
+        #reset-appearance:hover { background-color: #3d3d3d; }
+        /* ===== 外觀控制面板結束 ===== */
+
         button {
             background-color: #007acc; color: white; border: none; padding: 12px;
             border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1rem;
-            transition: background 0.2s;
+            margin-bottom: 15px; transition: background 0.2s;
         }
         button:hover { background-color: #005999; }
         button:disabled { background-color: #444; color: #777; cursor: not-allowed; }
-        #legend { margin-top: 20px; background: #252525; padding: 15px; border-radius: 6px; font-size: 0.85rem; border: 1px solid #333; }
+        #legend { background: #252525; padding: 15px; border-radius: 6px; font-size: 0.85rem; border: 1px solid #333; margin-bottom: 15px; }
         .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
         .color-box { width: 16px; height: 16px; border-radius: 3px; margin-right: 10px; box-sizing: border-box; }
-        #status { margin-top: auto; padding: 10px; background: #252525; border-radius: 4px; font-size: 0.85rem; color: #00ff66; text-align: center; }
+        #status { padding: 10px; background: #252525; border-radius: 4px; font-size: 0.85rem; color: #00ff66; text-align: center; margin-top: auto; }
+        
         #loading-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 100; display: none;
+            background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 100; display: none;
         }
-        .spinner { border: 4px solid rgba(255,255,255,0.1); width: 42px; height: 42px; border-radius: 50%; border-left-color: #007acc; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .spinner { border: 4px solid rgba(255,255,255,0.1); width: 60px; height: 60px; border-radius: 50%; border-left-color: #007acc; animation: spin 1s linear infinite; }
+        #progress-text { font-size: 2rem; font-weight: bold; color: #007acc; margin-top: 15px; font-variant-numeric: tabular-nums; }
+        #loading-subtext { margin-top: 5px; color: #aaa; font-size: 0.9rem; text-align: center; max-width: 80%; }
+        @keyframes spin { 0 { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
     <div id="sidebar">
-        <h2>🦷 牙體復形 3D 智慧比對</h2>
+        <h2>🦷 牙體復形 3D 雲端比對</h2>
         
         <div class="file-input-container">
             <label>1. Gold Standard (STL1)</label>
@@ -60,7 +124,7 @@
         </div>
         
         <div class="file-input-container">
-            <label>2. 學生製備模型 (STL2)</label>
+            <label>2. 待比對模型 (STL2)</label>
             <input type="file" id="stl2" accept=".stl">
         </div>
         
@@ -68,144 +132,316 @@
             <label>距離容差 Tolerance: <span id="tol-val">0.05</span> mm</label>
             <input type="range" id="tolerance" min="0.01" max="0.30" step="0.01" value="0.05">
         </div>
-        
-        <button id="compare-btn" disabled>開始自動比對</button>
+
+        <div class="layer-control-container">
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 0.85rem; color: #888;">3D 圖層顯示控制：</div>
+            <label class="layer-checkbox">
+                <input type="checkbox" id="toggle-stl1" checked> 顯示 Gold Standard (紅色區)
+            </label>
+            <label class="layer-checkbox">
+                <input type="checkbox" id="toggle-stl2" checked> 顯示 待比對模型 (藍色區)
+            </label>
+        </div>
+
+
+        <!-- ===== 外觀調整：顏色與透明度 ===== -->
+        <details id="appearance-panel" open>
+            <summary>外觀調整：顏色與透明度</summary>
+            <div class="model-appearance">
+                <div class="model-appearance-title">
+                    <span class="swatch-dot" data-swatch="stl1"></span>Gold Standard (STL1)
+                </div>
+
+                <div class="appearance-row">
+                    <span>符合區顏色</span>
+                    <input type="color" data-model="stl1" data-key="matchColor" value="#b3b3b3">
+                </div>
+                <div class="appearance-slider">
+                    <div class="appearance-row">
+                        <span>符合區不透明度</span>
+                        <span class="value" data-readout="stl1-matchAlpha">20%</span>
+                    </div>
+                    <input type="range" data-model="stl1" data-key="matchAlpha" min="0" max="100" step="1" value="20">
+                </div>
+
+                <div class="appearance-row">
+                    <span>偏差區顏色</span>
+                    <input type="color" data-model="stl1" data-key="devColor" value="#ff0000">
+                </div>
+                <div class="appearance-slider">
+                    <div class="appearance-row">
+                        <span>偏差區不透明度</span>
+                        <span class="value" data-readout="stl1-devAlpha">50%</span>
+                    </div>
+                    <input type="range" data-model="stl1" data-key="devAlpha" min="0" max="100" step="1" value="50">
+                </div>
+
+                <div class="appearance-slider">
+                    <div class="appearance-row">
+                        <span>整體不透明度</span>
+                        <span class="value" data-readout="stl1-master">100%</span>
+                    </div>
+                    <input type="range" data-model="stl1" data-key="master" min="0" max="100" step="1" value="100">
+                </div>
+            </div>
+
+            <div class="model-appearance">
+                <div class="model-appearance-title">
+                    <span class="swatch-dot" data-swatch="stl2"></span>待比對模型 (STL2)
+                </div>
+
+                <div class="appearance-row">
+                    <span>符合區顏色</span>
+                    <input type="color" data-model="stl2" data-key="matchColor" value="#000000">
+                </div>
+                <div class="appearance-slider">
+                    <div class="appearance-row">
+                        <span>符合區不透明度</span>
+                        <span class="value" data-readout="stl2-matchAlpha">0%</span>
+                    </div>
+                    <input type="range" data-model="stl2" data-key="matchAlpha" min="0" max="100" step="1" value="0">
+                </div>
+
+                <div class="appearance-row">
+                    <span>偏差區顏色</span>
+                    <input type="color" data-model="stl2" data-key="devColor" value="#1a4dff">
+                </div>
+                <div class="appearance-slider">
+                    <div class="appearance-row">
+                        <span>偏差區不透明度</span>
+                        <span class="value" data-readout="stl2-devAlpha">50%</span>
+                    </div>
+                    <input type="range" data-model="stl2" data-key="devAlpha" min="0" max="100" step="1" value="50">
+                </div>
+
+                <div class="appearance-slider">
+                    <div class="appearance-row">
+                        <span>整體不透明度</span>
+                        <span class="value" data-readout="stl2-master">100%</span>
+                    </div>
+                    <input type="range" data-model="stl2" data-key="master" min="0" max="100" step="1" value="100">
+                </div>
+            </div>
+            <button id="reset-appearance" type="button">回復預設外觀</button>
+        </details>
+        <!-- ===== 外觀調整結束 ===== -->
+
+        <button id="compare-btn" disabled>開始多執行緒安全比對</button>
+
+        <div id="volume-results">
+            <div style="font-weight: bold; margin-bottom: 10px; color: #00ff66; border-bottom: 1px solid #2b475e; padding-bottom: 5px;">📊 體積量化分析報告：</div>
+            <div class="vol-row"><span>標準牙齒總體積:</span><span id="vol-total" style="font-weight:bold; color:#fff;">-</span></div>
+            <div class="vol-row" style="color: #ff6666;"><span>修磨不足體積:</span><span><span id="vol-under">-</span> (<span id="pct-under">-</span>)</span></div>
+            <div class="vol-row" style="color: #66a3ff;"><span>過度修磨體積:</span><span><span id="vol-over">-</span> (<span id="pct-over">-</span>)</span></div>
+        </div>
         
         <div id="legend">
-            <div style="font-weight: bold; margin-bottom: 10px; color: #fff;">視覺圖例說明：</div>
+            <div style="font-weight: bold; margin-bottom: 10px; color: #fff;">透視圖例說明：</div>
             <div class="legend-item">
-                <div class="color-box" style="background-color: rgba(180,180,180,0.3); border: 1px dashed #fff;"></div>
-                <span>半透明灰色：結構符合標準</span>
+                <div class="color-box" id="legend-match" style="border: 1px dashed #666;"></div>
+                <span id="legend-match-text">結構符合標準</span>
             </div>
             <div class="legend-item">
-                <div class="color-box" style="background-color: #ff0000;"></div>
-                <span>紅色（不透明）：修磨不足 (Under-prep)</span>
+                <div class="color-box" id="legend-under"></div>
+                <span>修磨不足 (Under-prep)</span>
             </div>
             <div class="legend-item">
-                <div class="color-box" style="background-color: #0000ff;"></div>
-                <span>藍色（不透明）：過度修磨 (Over-prep)</span>
+                <div class="color-box" id="legend-over"></div>
+                <span>過度修磨 (Over-prep)</span>
             </div>
         </div>
         
-        <div id="status">系統就緒，請上傳檔案</div>
+        <div id="status">系統就緒，等待上傳檔案</div>
     </div>
 
     <div id="canvas-container">
         <div id="loading-overlay">
             <div class="spinner"></div>
-            <p style="margin-top: 15px; color: #fff;" id="loading-text">正在進行高精度比對運算...</p>
+            <div id="progress-text">0%</div>
+            <p id="loading-subtext">安全雲端環境已就緒...</p>
         </div>
     </div>
 
     <script>
-        // ==========================================
-        // 核心演算法內容 (供多執行緒與單執行緒共用)
-        // ==========================================
-        const algorithmLogic = `
-            function coreCompare(pos1, pos2, tol, cellSize) {
-                const colors1 = new Float32Array((pos1.length / 3) * 4);
-                const colors2 = new Float32Array((pos2.length / 3) * 4);
-                const grid2 = {}, grid1 = {};
+        const workerCode = `
+            self.onmessage = function(e) {
+                const { pos1, pos2, tol, cellSize } = e.data;
+                
+                const flags1 = new Uint8Array(pos1.length / 3);
+                const flags2 = new Uint8Array(pos2.length / 3);
 
-                for (let i = 0; i < pos2.length; i += 3) {
-                    const gx = Math.floor(pos2[i] / cellSize), gy = Math.floor(pos2[i+1] / cellSize), gz = Math.floor(pos2[i+2] / cellSize);
-                    const key = gx + ',' + gy + ',' + gz;
-                    if (!grid2[key]) grid2[key] = [];
-                    grid2[key].push(i);
-                }
+                const grid1 = {}, grid2 = {};
+
                 for (let i = 0; i < pos1.length; i += 3) {
-                    const gx = Math.floor(pos1[i] / cellSize), gy = Math.floor(pos1[i+1] / cellSize), gz = Math.floor(pos1[i+2] / cellSize);
-                    const key = gx + ',' + gy + ',' + gz;
+                    const key = Math.floor(pos1[i]/cellSize) + ',' + Math.floor(pos1[i+1]/cellSize) + ',' + Math.floor(pos1[i+2]/cellSize);
                     if (!grid1[key]) grid1[key] = [];
                     grid1[key].push(i);
                 }
-
-                let cIdx1 = 0;
-                for (let i = 0; i < pos1.length; i += 3) {
-                    const x = pos1[i], y = pos1[i+1], z = pos1[i+2];
-                    const gx = Math.floor(x / cellSize), gy = Math.floor(y / cellSize), gz = Math.floor(z / cellSize);
-                    let minDist = Infinity;
-                    for (let dx = -1; dx <= 1; dx++) {
-                        for (let dy = -1; dy <= 1; dy++) {
-                            for (let dz = -1; dz <= 1; dz++) {
-                                const indices = grid2[(gx+dx) + ',' + (gy+dy) + ',' + (gz+dz)];
-                                if (indices) {
-                                    for (let j = 0; j < indices.length; j++) {
-                                        const idx = indices[j];
-                                        const d = Math.sqrt((x-pos2[idx])**2 + (y-pos2[idx+1])**2 + (z-pos2[idx+2])**2);
-                                        if (d < minDist) minDist = d;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (minDist <= tol) {
-                        colors1[cIdx1] = 0.7; colors1[cIdx1+1] = 0.7; colors1[cIdx1+2] = 0.7; colors1[cIdx1+3] = 0.2;
-                    } else {
-                        colors1[cIdx1] = 1.0; colors1[cIdx1+1] = 0.0; colors1[cIdx1+2] = 0.0; colors1[cIdx1+3] = 1.0;
-                    }
-                    cIdx1 += 4;
-                }
-
-                let cIdx2 = 0;
                 for (let i = 0; i < pos2.length; i += 3) {
-                    const x = pos2[i], y = pos2[i+1], z = pos2[i+2];
+                    const key = Math.floor(pos2[i]/cellSize) + ',' + Math.floor(pos2[i+1]/cellSize) + ',' + Math.floor(pos2[i+2]/cellSize);
+                    if (!grid2[key]) grid2[key] = [];
+                    grid2[key].push(i);
+                }
+
+                const totalVerts1 = pos1.length / 3;
+                const totalVerts2 = pos2.length / 3;
+                const totalWork = totalVerts1 + totalVerts2;
+                let lastReportedPercent = -1;
+
+                // 散度定理總體積計算
+                let totalVolume1 = 0;
+                for (let i = 0; i < pos1.length; i += 9) {
+                    const ax = pos1[i], ay = pos1[i+1], az = pos1[i+2];
+                    const bx = pos1[i+3], by = pos1[i+4], bz = pos1[i+5];
+                    const cx = pos1[i+6], cy = pos1[i+7], cz = pos1[i+8];
+                    const vSign = (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6.0;
+                    totalVolume1 += vSign;
+                }
+                totalVolume1 = Math.abs(totalVolume1);
+
+                function getMinDist(x, y, z, grid, pos) {
                     const gx = Math.floor(x / cellSize), gy = Math.floor(y / cellSize), gz = Math.floor(z / cellSize);
                     let minDist = Infinity;
                     for (let dx = -1; dx <= 1; dx++) {
                         for (let dy = -1; dy <= 1; dy++) {
                             for (let dz = -1; dz <= 1; dz++) {
-                                const indices = grid1[(gx+dx) + ',' + (gy+dy) + ',' + (gz+dz)];
+                                const indices = grid[(gx+dx) + ',' + (gy+dy) + ',' + (gz+dz)];
                                 if (indices) {
                                     for (let j = 0; j < indices.length; j++) {
                                         const idx = indices[j];
-                                        const d = Math.sqrt((x-pos1[idx])**2 + (y-pos1[idx+1])**2 + (z-pos1[idx+2])**2);
+                                        const d = Math.sqrt((x-pos[idx])**2 + (y-pos[idx+1])**2 + (z-pos[idx+2])**2);
                                         if (d < minDist) minDist = d;
                                     }
                                 }
                             }
                         }
                     }
-                    if (minDist <= tol) {
-                        colors2[cIdx2] = 0.0; colors2[cIdx2+1] = 0.0; colors2[cIdx2+2] = 0.0; colors2[cIdx2+3] = 0.0;
-                    } else {
-                        colors2[cIdx2] = 0.1; colors2[cIdx2+1] = 0.3; colors2[cIdx2+2] = 1.0; colors2[cIdx2+3] = 1.0;
-                    }
-                    cIdx2 += 4;
+                    return minDist;
                 }
-                return { colors1, colors2 };
-            }
+
+                // 2. 計算 STL1 (Gold Standard) 的修磨不足體積
+                let cIdx1 = 0;
+                let underPrepVolume = 0;
+                for (let i = 0; i < pos1.length; i += 9) {
+                    const ax = pos1[i], ay = pos1[i+1], az = pos1[i+2];
+                    const bx = pos1[i+3], by = pos1[i+4], bz = pos1[i+5];
+                    const cx = pos1[i+6], cy = pos1[i+7], cz = pos1[i+8];
+
+                    const abx = bx - ax, aby = by - ay, abz = bz - az;
+                    const acx = cx - ax, acy = cy - ay, acz = cz - az;
+                    const cX = aby * acz - abz * acy, cY = abz * acx - abx * acz, cZ = abx * acy - aby * acx;
+                    const faceArea = 0.5 * Math.sqrt(cX*cX + cY*cY + cZ*cZ);
+                    const vertexArea = faceArea / 3.0;
+
+                    // 頂點 A
+                    let dA = getMinDist(ax, ay, az, grid2, pos2);
+                    if (dA <= tol) {
+                        flags1[cIdx1] = 0;
+                    } else {
+                        flags1[cIdx1] = 1;
+                        if (dA === Infinity) dA = 2.0; // 💡 終極修復防線：若超出搜尋鄰域，視為嚴重製備落差(2.0mm)，防止 Infinity 污染！
+                        underPrepVolume += vertexArea * dA;
+                    }
+                    cIdx1 += 1;
+
+                    // 頂點 B
+                    let dB = getMinDist(bx, by, bz, grid2, pos2);
+                    if (dB <= tol) {
+                        flags1[cIdx1] = 0;
+                    } else {
+                        flags1[cIdx1] = 1;
+                        if (dB === Infinity) dB = 2.0; // 💡 終極修復防線
+                        underPrepVolume += vertexArea * dB;
+                    }
+                    cIdx1 += 1;
+
+                    // 頂點 C
+                    let dC = getMinDist(cx, cy, cz, grid2, pos2);
+                    if (dC <= tol) {
+                        flags1[cIdx1] = 0;
+                    } else {
+                        flags1[cIdx1] = 1;
+                        if (dC === Infinity) dC = 2.0; // 💡 終極修復防線
+                        underPrepVolume += vertexArea * dC;
+                    }
+                    cIdx1 += 1;
+
+                    if ((i / 9) % 500 === 0) {
+                        const percent = Math.round(((i / 3) / totalWork) * 100);
+                        if (percent !== lastReportedPercent) {
+                            self.postMessage({ type: 'progress', percent: percent, msg: '計算 Gold Standard 容積積分...' });
+                            lastReportedPercent = percent;
+                        }
+                    }
+                }
+
+                // 3. 計算 STL2 (待比對模型) 的過度修磨體積
+                let cIdx2 = 0;
+                let overPrepVolume = 0;
+                for (let i = 0; i < pos2.length; i += 9) {
+                    const ax = pos2[i], ay = pos2[i+1], az = pos2[i+2];
+                    const bx = pos2[i+3], by = pos2[i+4], bz = pos2[i+5];
+                    const cx = pos2[i+6], cy = pos2[i+7], cz = pos2[i+8];
+
+                    const abx = bx - ax, aby = by - ay, abz = bz - az;
+                    const acx = cx - ax, acy = cy - ay, acz = cz - az;
+                    const cX = aby * acz - abz * acy, cY = abz * acx - abx * acz, cZ = abx * acy - aby * acx;
+                    const faceArea = 0.5 * Math.sqrt(cX*cX + cY*cY + cZ*cZ);
+                    const vertexArea = faceArea / 3.0;
+
+                    // 頂點 A
+                    let dA = getMinDist(ax, ay, az, grid1, pos1);
+                    if (dA <= tol) {
+                        flags2[cIdx2] = 0;
+                    } else {
+                        flags2[cIdx2] = 1;
+                        if (dA === Infinity) dA = 2.0; // 💡 終極修復防線
+                        overPrepVolume += vertexArea * dA;
+                    }
+                    cIdx2 += 1;
+
+                    // 頂點 B
+                    let dB = getMinDist(bx, by, bz, grid1, pos1);
+                    if (dB <= tol) {
+                        flags2[cIdx2] = 0;
+                    } else {
+                        flags2[cIdx2] = 1;
+                        if (dB === Infinity) dB = 2.0; // 💡 終極修復防線
+                        overPrepVolume += vertexArea * dB;
+                    }
+                    cIdx2 += 1;
+
+                    // 頂點 C
+                    let dC = getMinDist(cx, cy, cz, grid1, pos1);
+                    if (dC <= tol) {
+                        flags2[cIdx2] = 0;
+                    } else {
+                        flags2[cIdx2] = 1;
+                        if (dC === Infinity) dC = 2.0; // 💡 終極修復防線
+                        overPrepVolume += vertexArea * dC;
+                    }
+                    cIdx2 += 1;
+
+                    if ((i / 9) % 500 === 0) {
+                        const percent = Math.round(((totalVerts1 + (i / 3)) / totalWork) * 100);
+                        if (percent !== lastReportedPercent) {
+                            self.postMessage({ type: 'progress', percent: percent, msg: '計算待比對模型容積積分...' });
+                            lastReportedPercent = percent;
+                        }
+                    }
+                }
+
+                self.postMessage({ 
+                    type: 'done', flags1, flags2, totalVolume1, underPrepVolume, overPrepVolume 
+                }, [flags1.buffer, flags2.buffer]);
+            };
         `;
 
-        // ==========================================
-        // 安全防護網：嘗試初始化 Web Worker，失敗則啟動相容防線
-        // ==========================================
-        let geometryWorker = null;
-        let useWorker = false;
-
-        try {
-            const workerCode = algorithmLogic + `
-                self.onmessage = function(e) {
-                    const { pos1, pos2, tol, cellSize } = e.data;
-                    const result = coreCompare(pos1, pos2, tol, cellSize);
-                    self.postMessage(result, [result.colors1.buffer, result.colors2.buffer]);
-                };
-            `;
-            const blob = new Blob([workerCode], { type: 'application/javascript' });
-            geometryWorker = new Worker(URL.createObjectURL(blob));
-            useWorker = true;
-            console.log("🚀 系統成功啟動：Web Worker 多執行緒模式");
-        } catch (e) {
-            useWorker = false;
-            console.warn("⚠️ 瀏覽器安全原則攔截了 Worker (通常是因為直接雙擊打開 HTML)。已自動切換為本機高效相容模式。");
-            // 動態在主執行緒注入演算法邏輯
-            const scriptInject = document.createElement('script');
-            scriptInject.text = algorithmLogic;
-            document.body.appendChild(scriptInject);
-        }
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const geometryWorker = new Worker(URL.createObjectURL(blob));
 
         // ==========================================
-        // 初始化 Three.js 環境 (不受任何安全限制影響)
+        // 初始化 Three.js 環境
         // ==========================================
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
@@ -231,6 +467,8 @@
         scene.add(dirLight2);
 
         let geometry1, geometry2, mesh1, mesh2;
+        let material1 = null, material2 = null;   // 兩模型各自一份材質，才能獨立調整整體透明度
+        let flags1 = null, flags2 = null;         // 0 = 符合容差, 1 = 偏差
         const loader = new THREE.STLLoader();
 
         const file1Input = document.getElementById('stl1');
@@ -239,102 +477,230 @@
         const toleranceInput = document.getElementById('tolerance');
         const tolValDisplay = document.getElementById('tol-val');
         const statusDiv = document.getElementById('status');
+        
         const loadingOverlay = document.getElementById('loading-overlay');
+        const progressText = document.getElementById('progress-text');
+        const loadingSubtext = document.getElementById('loading-subtext');
+
+        const toggleStl1Check = document.getElementById('toggle-stl1');
+        const toggleStl2Check = document.getElementById('toggle-stl2');
 
         toleranceInput.addEventListener('input', (e) => { tolValDisplay.innerText = e.target.value; });
 
-        // 正確啟動事件監聽（確保按鈕能解鎖解鎖）
         function checkInputs() {
             compareBtn.disabled = !(file1Input.files.length && file2Input.files.length);
-            if(!compareBtn.disabled) {
-                statusDiv.innerText = useWorker ? "🟢 檔案已就緒 (多執行緒加速模式)" : "🟡 檔案已就緒 (本地安全相容模式)";
-            }
+            if(!compareBtn.disabled) statusDiv.innerText = "🟢 網格數據就緒，可執行多執行緒半透視比對";
         }
         file1Input.addEventListener('change', checkInputs);
         file2Input.addEventListener('change', checkInputs);
 
-        // ==========================================
-        // 📥 點擊比對的執行分配分配
-        // ==========================================
-        compareBtn.addEventListener('click', () => {
-            loadingOverlay.style.display = 'flex';
-            statusDiv.innerText = "正在讀取 3D 網格模型...";
-            
-            const reader1 = new FileReader();
-            reader1.onload = function (e1) {
-                geometry1 = loader.parse(e1.target.result);
-                
-                const reader2 = new FileReader();
-                reader2.onload = function (e2) {
-                    geometry2 = loader.parse(e2.target.result);
-                    
-                    // 執行重心對齊
-                    alignCenterOfMass(geometry1, geometry2);
+        toggleStl1Check.addEventListener('change', () => { if (mesh1) mesh1.visible = toggleStl1Check.checked; });
+        toggleStl2Check.addEventListener('change', () => { if (mesh2) mesh2.visible = toggleStl2Check.checked; });
 
-                    const pos1Array = geometry1.attributes.position.array;
-                    const pos2Array = geometry2.attributes.position.array;
-                    const tol = parseFloat(toleranceInput.value);
+        // ==========================================
+        // 🎨 外觀層：顏色與透明度
+        // 只依賴 mesh1/mesh2、material1/material2、flags1/flags2，
+        // 與比對演算法完全解耦。調整滑桿不會重新運算。
+        // ==========================================
+        const DEFAULT_APPEARANCE = {
+            stl1: { matchColor: '#b3b3b3', matchAlpha: 0.20, devColor: '#ff0000', devAlpha: 0.50, master: 1.00 },
+            stl2: { matchColor: '#000000', matchAlpha: 0.00, devColor: '#1a4dff', devAlpha: 0.50, master: 1.00 }
+        };
+        const appearance = JSON.parse(JSON.stringify(DEFAULT_APPEARANCE));
 
-                    if (useWorker) {
-                        // 【路徑 A】丟給背景算，主畫面不卡死
-                        const p1Copy = pos1Array.slice();
-                        const p2Copy = pos2Array.slice();
-                        geometryWorker.postMessage({ pos1: p1Copy, pos2: p2Copy, tol: tol, cellSize: 1.0 }, [p1Copy.buffer, p2Copy.buffer]);
-                    } else {
-                        // 【路徑 B】本地直接運算，利用 setTimeout 讓 Loading 動畫能閃一下
-                        statusDiv.innerText = "正在進行本地高效率運算...";
-                        setTimeout(() => {
-                            const result = coreCompare(pos1Array, pos2Array, tol, 1.0);
-                            renderComparisonResults(result.colors1, result.colors2);
-                        }, 50);
-                    }
-                };
-                reader2.readAsArrayBuffer(file2Input.files[0]);
-            };
-            reader1.readAsArrayBuffer(file1Input.files[0]);
+        function hexToRgb(hex) {
+            const n = parseInt(hex.slice(1), 16);
+            return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+        }
+
+        function makeMaterial() {
+            return new THREE.MeshStandardMaterial({
+                vertexColors: true, roughness: 0.3, metalness: 0.1,
+                side: THREE.DoubleSide, transparent: true, depthWrite: false
+            });
+        }
+
+        // 依目前設定重新塗色：RGB 取自色票，A 取自透明度滑桿
+        function paintModel(geometry, flags, cfg, material) {
+            if (!geometry || !flags || !material) return;
+            let attr = geometry.getAttribute('color');
+            if (!attr || attr.count !== flags.length || attr.itemSize !== 4) {
+                attr = new THREE.BufferAttribute(new Float32Array(flags.length * 4), 4);
+                geometry.setAttribute('color', attr);
+            }
+            const arr = attr.array;
+            const m = hexToRgb(cfg.matchColor);
+            const d = hexToRgb(cfg.devColor);
+            for (let v = 0, o = 0; v < flags.length; v++, o += 4) {
+                const isDev = flags[v] === 1;
+                const c = isDev ? d : m;
+                arr[o] = c[0]; arr[o+1] = c[1]; arr[o+2] = c[2];
+                arr[o+3] = isDev ? cfg.devAlpha : cfg.matchAlpha;
+            }
+            attr.needsUpdate = true;
+
+            material.opacity = cfg.master;            // 與頂點 alpha 相乘
+            // 完全不透明時才寫入深度；半透明時關閉，避免透視破面
+            material.depthWrite = (cfg.master >= 1 && cfg.matchAlpha >= 1 && cfg.devAlpha >= 1);
+            material.needsUpdate = true;
+        }
+
+        function applyAppearance() {
+            paintModel(geometry1, flags1, appearance.stl1, material1);
+            paintModel(geometry2, flags2, appearance.stl2, material2);
+            syncSwatches();
+        }
+
+        // 圖例與色點跟著使用者選的顏色走
+        function syncSwatches() {
+            const a1 = appearance.stl1, a2 = appearance.stl2;
+            document.querySelector('[data-swatch="stl1"]').style.backgroundColor = a1.devColor;
+            document.querySelector('[data-swatch="stl2"]').style.backgroundColor = a2.devColor;
+
+            const match = document.getElementById('legend-match');
+            match.style.backgroundColor = a1.matchColor;
+            match.style.opacity = Math.max(a1.matchAlpha, 0.15);
+
+            const under = document.getElementById('legend-under');
+            under.style.backgroundColor = a1.devColor;
+            under.style.opacity = Math.max(a1.devAlpha, 0.15);
+
+            const over = document.getElementById('legend-over');
+            over.style.backgroundColor = a2.devColor;
+            over.style.opacity = Math.max(a2.devAlpha, 0.15);
+        }
+
+        function setReadout(model, key) {
+            const el = document.querySelector('[data-readout="' + model + '-' + key + '"]');
+            if (el) el.innerText = Math.round(appearance[model][key] * 100) + '%';
+        }
+
+        document.querySelectorAll('#appearance-panel input[data-model]').forEach((input) => {
+            input.addEventListener('input', () => {
+                const model = input.dataset.model, key = input.dataset.key;
+                appearance[model][key] = (input.type === 'color')
+                    ? input.value
+                    : parseInt(input.value, 10) / 100;
+                if (input.type === 'range') setReadout(model, key);
+                applyAppearance();
+            });
         });
 
-        // 監聽 Worker 回傳 (僅路徑 A 會觸發)
-        if (useWorker) {
-            geometryWorker.onmessage = function(e) {
-                renderComparisonResults(e.data.colors1, e.data.colors2);
-            };
-        }
-
-        // ==========================================
-        // 3D 渲染與聚焦輸出
-        // ==========================================
-        function renderComparisonResults(colors1, colors2) {
-            if(mesh1) scene.remove(mesh1);
-            if(mesh2) scene.remove(mesh2);
-
-            geometry1.setAttribute('color', new THREE.BufferAttribute(colors1, 4));
-            geometry2.setAttribute('color', new THREE.BufferAttribute(colors2, 4));
-
-            const material = new THREE.MeshStandardMaterial({
-                vertexColors: true, roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide, transparent: true, depthWrite: true,
+        document.getElementById('reset-appearance').addEventListener('click', () => {
+            Object.assign(appearance.stl1, DEFAULT_APPEARANCE.stl1);
+            Object.assign(appearance.stl2, DEFAULT_APPEARANCE.stl2);
+            document.querySelectorAll('#appearance-panel input[data-model]').forEach((input) => {
+                const cfg = appearance[input.dataset.model], key = input.dataset.key;
+                if (input.type === 'color') {
+                    input.value = cfg[key];
+                } else {
+                    input.value = Math.round(cfg[key] * 100);
+                    setReadout(input.dataset.model, key);
+                }
             });
+            applyAppearance();
+        });
 
-            mesh1 = new THREE.Mesh(geometry1, material);
-            mesh2 = new THREE.Mesh(geometry2, material);
-            scene.add(mesh1);
-            scene.add(mesh2);
+        syncSwatches();
+        // ===== 外觀層結束 =====
 
-            geometry1.computeBoundingSphere();
-            const center = geometry1.boundingSphere.center;
-            controls.target.copy(center);
-            camera.position.set(center.x, center.y, center.z + geometry1.boundingSphere.radius * 2);
-            controls.update();
 
-            loadingOverlay.style.display = 'none';
-            statusDiv.innerText = "🎉 比對成功！請在畫布上拖曳檢視。";
-        }
+        compareBtn.addEventListener('click', () => {
+            loadingOverlay.style.display = 'flex';
+            progressText.innerText = "0%";
+            loadingSubtext.innerText = "正在解讀 3D STL 檔案編碼...";
+            document.getElementById('volume-results').style.display = 'none';
+            
+            setTimeout(() => {
+                const reader1 = new FileReader();
+                reader1.onload = function (e1) {
+                    geometry1 = loader.parse(e1.target.result);
+                    const reader2 = new FileReader();
+                    reader2.onload = function (e2) {
+                        geometry2 = loader.parse(e2.target.result);
+                        loadingSubtext.innerText = "正在進行 3D 空間座標系重心對齊...";
+                        
+                        setTimeout(() => {
+                            alignCenterOfMass(geometry1, geometry2);
+
+                            const pos1Array = geometry1.attributes.position.array;
+                            const pos2Array = geometry2.attributes.position.array;
+                            const p1Copy = pos1Array.slice();
+                            const p2Copy = pos2Array.slice();
+
+                            geometryWorker.postMessage({
+                                pos1: p1Copy, pos2: p2Copy,
+                                tol: parseFloat(toleranceInput.value), cellSize: 0.5
+                            }, [p1Copy.buffer, p2Copy.buffer]);
+                        }, 30);
+                    };
+                    reader2.readAsArrayBuffer(file2Input.files[0]);
+                };
+                reader1.readAsArrayBuffer(file1Input.files[0]);
+            }, 30);
+        });
+
+        geometryWorker.onmessage = function(e) {
+            const data = e.data;
+            if (data.type === 'progress') {
+                progressText.innerText = data.percent + "%";
+                loadingSubtext.innerText = `${data.msg}`;
+            } 
+            else if (data.type === 'done') {
+                progressText.innerText = "100%";
+                loadingSubtext.innerText = "比對完成！正在渲染量化報告...";
+                
+                setTimeout(() => {
+                    if(mesh1) scene.remove(mesh1);
+                    if(mesh2) scene.remove(mesh2);
+
+                    flags1 = data.flags1;
+                    flags2 = data.flags2;
+
+                    material1 = makeMaterial();
+                    material2 = makeMaterial();
+
+                    mesh1 = new THREE.Mesh(geometry1, material1);
+                    mesh2 = new THREE.Mesh(geometry2, material2);
+                    mesh1.renderOrder = 1;
+                    mesh2.renderOrder = 2;
+
+                    mesh1.visible = toggleStl1Check.checked;
+                    mesh2.visible = toggleStl2Check.checked;
+
+                    scene.add(mesh1);
+                    scene.add(mesh2);
+
+                    applyAppearance();   // 依目前色票與透明度上色
+
+                    geometry1.computeBoundingSphere();
+                    const center = geometry1.boundingSphere.center;
+                    controls.target.copy(center);
+                    camera.position.set(center.x, center.y, center.z + geometry1.boundingSphere.radius * 2);
+                    controls.update();
+
+                    // 💡 加入零體積防護防線 (data.totalVolume1 > 0)，防止極端情況下的零除錯誤
+                    const pctUnder = data.totalVolume1 > 0 ? ((data.underPrepVolume / data.totalVolume1) * 100).toFixed(2) : "0.00";
+                    const pctOver = data.totalVolume1 > 0 ? ((data.overPrepVolume / data.totalVolume1) * 100).toFixed(2) : "0.00";
+
+                    document.getElementById('vol-total').innerText = data.totalVolume1.toFixed(1) + " mm³";
+                    document.getElementById('vol-under').innerText = data.underPrepVolume.toFixed(2) + " mm³";
+                    document.getElementById('pct-under').innerText = pctUnder + "%";
+                    document.getElementById('vol-over').innerText = data.overPrepVolume.toFixed(2) + " mm³";
+                    document.getElementById('pct-over').innerText = pctOver + "%";
+                    
+                    document.getElementById('volume-results').style.display = 'block';
+
+                    loadingOverlay.style.display = 'none';
+                    statusDiv.innerText = "🎉 比對完成！可在左側即時調整顏色與透明度。";
+                }, 30);
+            }
+        };
 
         function alignCenterOfMass(geo1, geo2) {
             geo1.computeBoundingBox(); geo2.computeBoundingBox();
             const center1 = new THREE.Vector3(), center2 = new THREE.Vector3();
             geo1.boundingBox.getCenter(center1); geo2.boundingBox.getCenter(center2);
-
             const pos1 = geo1.attributes.position.array;
             for (let i = 0; i < pos1.length; i += 3) {
                 pos1[i] -= center1.x; pos1[i+1] -= center1.y; pos1[i+2] -= center1.z;
